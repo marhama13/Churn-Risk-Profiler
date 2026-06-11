@@ -161,29 +161,73 @@ def load_data():
 @st.cache_resource
 def train_all_models(df):
     data = df.copy()
+
+    # Remove customer ID
     if "customerID" in data.columns:
         data.drop("customerID", axis=1, inplace=True)
-    data["TotalCharges"] = pd.to_numeric(data["TotalCharges"], errors="coerce")
+
+    # Fix TotalCharges
+    if "TotalCharges" in data.columns:
+        data["TotalCharges"] = pd.to_numeric(
+            data["TotalCharges"],
+            errors="coerce"
+        )
+
+    # Remove missing values
     data.dropna(inplace=True)
-    le = LabelEncoder()
-    for c in data.columns:
-        if data[c].dtype == "object":
-            data[c] = le.fit_transform(data[c])
+
+    # Encode categorical columns
+    categorical_cols = data.select_dtypes(include=["object"]).columns
+
+    for col in categorical_cols:
+        data[col] = LabelEncoder().fit_transform(data[col].astype(str))
+
+    # Target variable
     X = data.drop("Churn", axis=1)
     y = data["Churn"]
+
+    # Force all columns numeric
+    X = X.apply(pd.to_numeric, errors="coerce")
+
+    # Fill any remaining missing values
+    X.fillna(0, inplace=True)
+
+    # Scale features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled,
+        y,
+        test_size=0.2,
+        random_state=42
+    )
+
     models = {
         "Logistic Regression": LogisticRegression(max_iter=1000),
-        "Decision Tree":       DecisionTreeClassifier(max_depth=5),
-        "Random Forest":       RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42),
-        "XGBoost":             XGBClassifier(n_estimators=200, max_depth=5, eval_metric="logloss"),
+        "Decision Tree": DecisionTreeClassifier(max_depth=5),
+        "Random Forest": RandomForestClassifier(
+            n_estimators=200,
+            max_depth=10,
+            random_state=42
+        ),
+        "XGBoost": XGBClassifier(
+            n_estimators=200,
+            max_depth=5,
+            eval_metric="logloss"
+        ),
     }
+
     for name, model in models.items():
         model.fit(X_train, y_train)
-    results = {n: accuracy_score(y_test, m.predict(X_test)) for n, m in models.items()}
+
+    results = {
+        n: accuracy_score(y_test, m.predict(X_test))
+        for n, m in models.items()
+    }
+
     best_name = max(results, key=results.get)
+
     return data, X, scaler, X_test, y_test, models, best_name
 
 df   = load_data()
